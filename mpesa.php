@@ -1,4 +1,3 @@
-
 <?php
 class MpesaRejectedException extends RuntimeException {}
 
@@ -14,7 +13,7 @@ function mpesa_config() {
         'consumer_secret' => getenv('MPESA_CONSUMER_SECRET') ?: '',
         'shortcode' => getenv('MPESA_SHORTCODE') ?: '',
         'passkey' => getenv('MPESA_PASSKEY') ?: '',
-        'callback_url' => getenv('MPESA_CALLBACK_URL') ?: '',
+        'callback_url' => getenv('MPESA_CALLBACK_URL') ?: 'https://kra-nakuru-tax-system-production.up.railway.app/mpesa_callback.php',
         'transaction_type' => getenv('MPESA_TRANSACTION_TYPE') ?: 'CustomerPayBillOnline',
     ];
     foreach (['consumer_key', 'consumer_secret', 'shortcode', 'passkey', 'callback_url'] as $key) {
@@ -42,19 +41,19 @@ function mpesa_http_request($url, $headers, $body = null) {
     if ($ch === false) {
         throw new RuntimeException('Could not initialize the M-Pesa connection.');
     }
-$curlOptions = [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HTTPHEADER => $headers,
-    CURLOPT_CONNECTTIMEOUT => 10,
-    CURLOPT_TIMEOUT => 30,
-    CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
-];
+    $curlOptions = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+    ];
 
-if (PHP_OS_FAMILY === 'Windows' && defined('CURLSSLOPT_NATIVE_CA')) {
-    $curlOptions[CURLOPT_SSL_OPTIONS] = CURLSSLOPT_NATIVE_CA;
-}
+    if (PHP_OS_FAMILY === 'Windows' && defined('CURLSSLOPT_NATIVE_CA')) {
+        $curlOptions[CURLOPT_SSL_OPTIONS] = CURLSSLOPT_NATIVE_CA;
+    }
 
-curl_setopt_array($ch, $curlOptions);
+    curl_setopt_array($ch, $curlOptions);
     if ($body !== null) {
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));

@@ -2,25 +2,32 @@
 class MpesaRejectedException extends RuntimeException {}
 
 function mpesa_config() {
-    $environment = getenv('MPESA_ENV') ?: 'sandbox';
+    $environment = trim(getenv('MPESA_ENV') ?: 'sandbox');
     if (!in_array($environment, ['sandbox', 'production'], true)) {
         throw new RuntimeException('MPESA_ENV must be sandbox or production.');
     }
 
+    $rawCallback = trim(getenv('MPESA_CALLBACK_URL') ?: 'https://kra-nakuru-tax-system-production.up.railway.app/mpesa_callback.php');
+    if (preg_match('/\[(https?:\/\/[^\]]+)\]/', $rawCallback, $m)) {
+        $rawCallback = $m[1];
+    }
+
     $config = [
         'environment' => $environment,
-        'consumer_key' => getenv('MPESA_CONSUMER_KEY') ?: '',
-        'consumer_secret' => getenv('MPESA_CONSUMER_SECRET') ?: '',
-        'shortcode' => getenv('MPESA_SHORTCODE') ?: '',
-        'passkey' => getenv('MPESA_PASSKEY') ?: '',
-        'callback_url' => getenv('MPESA_CALLBACK_URL') ?: 'https://kra-nakuru-tax-system-production.up.railway.app/mpesa_callback.php',
-        'transaction_type' => getenv('MPESA_TRANSACTION_TYPE') ?: 'CustomerPayBillOnline',
+        'consumer_key' => trim(getenv('MPESA_CONSUMER_KEY') ?: ''),
+        'consumer_secret' => trim(getenv('MPESA_CONSUMER_SECRET') ?: ''),
+        'shortcode' => trim(getenv('MPESA_SHORTCODE') ?: ''),
+        'passkey' => trim(getenv('MPESA_PASSKEY') ?: ''),
+        'callback_url' => $rawCallback,
+        'transaction_type' => trim(getenv('MPESA_TRANSACTION_TYPE') ?: 'CustomerPayBillOnline'),
     ];
+
     foreach (['consumer_key', 'consumer_secret', 'shortcode', 'passkey', 'callback_url'] as $key) {
         if ($config[$key] === '') {
             throw new RuntimeException('M-Pesa is not configured. Set the required MPESA_* environment variables.');
         }
     }
+
     if (filter_var($config['callback_url'], FILTER_VALIDATE_URL) === false
         || parse_url($config['callback_url'], PHP_URL_SCHEME) !== 'https') {
         throw new RuntimeException('MPESA_CALLBACK_URL must be a publicly reachable HTTPS URL.');
@@ -29,6 +36,7 @@ function mpesa_config() {
     $config['base_url'] = $environment === 'production'
         ? 'https://api.safaricom.co.ke'
         : 'https://sandbox.safaricom.co.ke';
+        
     return $config;
 }
 
@@ -41,6 +49,7 @@ function mpesa_http_request($url, $headers, $body = null) {
     if ($ch === false) {
         throw new RuntimeException('Could not initialize the M-Pesa connection.');
     }
+
     $curlOptions = [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => $headers,
@@ -63,6 +72,7 @@ function mpesa_http_request($url, $headers, $body = null) {
     $curlErr = curl_error($ch);
     $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
+
     if ($response === false) {
         throw new RuntimeException('cURL error: ' . ($curlErr ?: 'Unknown connection failure'));
     }
@@ -76,9 +86,11 @@ function mpesa_http_request($url, $headers, $body = null) {
             ? 'Safaricom rejected the request: ' . $description
             : 'Safaricom rejected the M-Pesa request (HTTP ' . $status . ').');
     }
+
     if ($status < 200 || $status >= 300 || !is_array($decoded)) {
         throw new RuntimeException('Safaricom returned an unexpected response. The request may still be processing.');
     }
+
     return $decoded;
 }
 
@@ -114,8 +126,10 @@ function mpesa_callback_url($baseUrl, $token) {
 }
 
 function mpesa_send_stk($config, $accessToken, $phone, $amount, $returnId, $callbackToken) {
+    date_default_timezone_set('Africa/Nairobi');
     $timestamp = date('YmdHis');
     $password = base64_encode($config['shortcode'] . $config['passkey'] . $timestamp);
+    
     $response = mpesa_http_request(
         $config['base_url'] . '/mpesa/stkpush/v1/processrequest',
         ['Authorization: Bearer ' . $accessToken, 'Content-Type: application/json'],
@@ -140,5 +154,6 @@ function mpesa_send_stk($config, $accessToken, $phone, $amount, $returnId, $call
         $description = $response['ResponseDescription'] ?? 'Request was not accepted.';
         throw new MpesaRejectedException('M-Pesa could not start the STK prompt: ' . $description);
     }
+    
     return $response;
 }
